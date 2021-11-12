@@ -1036,6 +1036,8 @@ const KeyRangeRef clientLibBinaryKeys(LiteralStringRef("\xff\x02/clientlib/bin/"
                                       LiteralStringRef("\xff\x02/clientlib/bin0"));
 const KeyRef clientLibBinaryPrefix = clientLibBinaryKeys.begin;
 
+const KeyRef clientLibChangeCounterKey = "\xff\x02/clientlib/changeCounter"_sr;
+
 const KeyRangeRef testOnlyTxnStateStorePrefixRange(LiteralStringRef("\xff/TESTONLYtxnStateStore/"),
                                                    LiteralStringRef("\xff/TESTONLYtxnStateStore0"));
 
