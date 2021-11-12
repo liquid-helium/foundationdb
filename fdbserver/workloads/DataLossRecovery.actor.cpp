@@ -70,29 +70,52 @@ struct DataLossRecoveryWorkload : TestWorkload {
 	}
 
 	ACTOR Future<Void> _start(DataLossRecoveryWorkload* self, Database cx) {
-		state Key key = "TestKey"_sr;
-		state Key endKey = "TestKey0"_sr;
-		state Value oldValue = "TestValue"_sr;
-		state Value newValue = "TestNewValue"_sr;
+		std::cout << "Waiting for pre-split." << std::endl;
+		state ReadYourWritesTransaction tr(cx);
+		loop {
+			try {
+				tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+				// state Future<Void> watchFuture = tr.watch(dataDistributionInitShardKey);
+				// wait(tr.commit());
+				// wait(watchFuture);
+				// tr.reset();
+				// tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+				Optional<Value> value = wait(tr.get(dataDistributionInitShardKey));
+				if (!value.present()) {
+					std::cout << "Init not enabled." << std::endl;
+					break;
+				}
+				if (value == dataDistributionInitShardDone) {
+					std::cout << "Init done." << std::endl;
+					break;
+				}
+				std::cout << "continue waiting Init done." << std::endl;
+				wait(delay(5));
+				tr.reset();
+			} catch (Error& e) {
+				wait(tr.onError(e));
+			}
+		}
 
-		wait(self->writeAndVerify(self, cx, key, oldValue));
-
-		// Move [key, endKey) to team: {address}.
-		state NetworkAddress address = wait(self->disableDDAndMoveShard(self, cx, KeyRangeRef(key, endKey)));
-		wait(self->readAndVerify(self, cx, key, oldValue));
-
-		// Kill team {address}, and expect read to timeout.
-		self->killProcess(self, address);
-		wait(self->readAndVerify(self, cx, key, timed_out()));
-
-		// Reenable DD and exclude address as fail, so that [key, endKey) will be dropped and moved to a new team.
-		// Expect read to return 'value not found'.
-		int ignore = wait(setDDMode(cx, 1));
-		wait(self->exclude(cx, address));
-		wait(self->readAndVerify(self, cx, key, Optional<Value>()));
-
-		// Write will scceed.
-		wait(self->writeAndVerify(self, cx, key, newValue));
+		state std::vector<Key> sps = { "\x00"_sr, "\x44"_sr, "\x88"_sr, "\xbb"_sr, "\xff"_sr };
+		state Transaction validateTr(cx);
+		state int i = 0;
+		for (i = 0; i < sps.size(); ++i) {
+			std::cout << "Team for " << sps[i].toString() << std::endl;
+			loop {
+				try {
+					Standalone<VectorRef<const char*>> addresses = wait(validateTr.getAddressesForKey(sps[i]));
+					// The move function is not what we are testing here, crash the test if the move fails.
+					for (int i = 0; i < addresses.size(); ++i) {
+						std::cout << addresses[i] << std::endl;
+					}
+					break;
+				} catch (Error& e) {
+					wait(validateTr.onError(e));
+				}
+			}
+			std::cout << std::endl;
+		}
 
 		return Void();
 	}

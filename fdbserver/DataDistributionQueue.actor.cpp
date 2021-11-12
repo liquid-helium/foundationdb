@@ -1334,7 +1334,7 @@ ACTOR Future<bool> rebalanceTeams(DDQueueData* self,
 	for (int i = 0; i < shards.size(); i++) {
 		if (moveShard == shards[i]) {
 			traceEvent->detail("ShardStillPresent", true);
-			self->output.send(RelocateShard(moveShard, priority));
+			// self->output.send(RelocateShard(moveShard, priority));
 			return true;
 		}
 	}

@@ -809,6 +809,9 @@ const KeyRef moveKeysLockWriteKey = LiteralStringRef("\xff/moveKeysLock/Write");
 const KeyRef dataDistributionModeKey = LiteralStringRef("\xff/dataDistributionMode");
 const UID dataDistributionModeLock = UID(6345, 3425);
 
+const KeyRef  dataDistributionInitShardKey ="\xff/dataDistributionInitShard"_sr;
+const ValueRef dataDistributionInitShardDone = "0"_sr, dataDistributionInitShardPending = "1"_sr;
+
 // Keys to view and control tag throttling
 const KeyRangeRef tagThrottleKeys =
     KeyRangeRef(LiteralStringRef("\xff\x02/throttledTags/tag/"), LiteralStringRef("\xff\x02/throttledTags/tag0"));

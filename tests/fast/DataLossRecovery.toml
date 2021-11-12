@@ -1,4 +1,5 @@
 [configuration]
+buggify = false
 generateFearless = false
 config = 'triple'
 storageEngineType = 0

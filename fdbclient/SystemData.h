@@ -355,6 +355,9 @@ extern const KeyRef moveKeysLockOwnerKey, moveKeysLockWriteKey;
 extern const KeyRef dataDistributionModeKey;
 extern const UID dataDistributionModeLock;
 
+extern const KeyRef dataDistributionInitShardKey;
+extern const ValueRef dataDistributionInitShardDone, dataDistributionInitShardPending;
+
 // Keys to view and control tag throttling
 extern const KeyRangeRef tagThrottleKeys;
 extern const KeyRef tagThrottleKeysPrefix;

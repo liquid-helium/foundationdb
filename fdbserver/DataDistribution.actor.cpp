@@ -3080,6 +3080,103 @@ ACTOR Future<Void> waitUntilHealthy(DDTeamCollection* self, double extraDelay = 
 	}
 }
 
+// Moves keyrange to the target servers.
+ACTOR Future<Void> moveShard(Database cx,
+                             KeyRange keys,
+                             Reference<TCTeamInfo> team,
+                             MoveKeysLock lock,
+                             const DDEnabledState* ddEnabledState) {
+	// Disable DD to avoid DD undoing of our move.
+	// state int ignore = wait(setDDMode(cx, 0));
+	TraceEvent("PreSplitMoveShardBegin")
+	    .detail("Begin", keys.begin)
+	    .detail("End", keys.end)
+	    .detail("NewTeam", describe(team->getServerIDs()));
+
+	state std::unique_ptr<FlowLock> startMoveKeysParallelismLock = std::make_unique<FlowLock>();
+	state std::unique_ptr<FlowLock> finishMoveKeysParallelismLock = std::make_unique<FlowLock>();
+
+	wait(moveKeys(cx,
+	              keys,
+	              team->getServerIDs(),
+	              team->getServerIDs(),
+	              lock,
+	              Promise<Void>(),
+	              startMoveKeysParallelismLock.get(),
+	              finishMoveKeysParallelismLock.get(),
+	              false,
+	              UID(), // for logging only
+	              ddEnabledState));
+
+	TraceEvent("PreSplitMoveShardFinish")
+	    .detail("Begin", keys.begin)
+	    .detail("End", keys.end)
+	    .detail("NewTeam", describe(team->getServerIDs()));
+
+	return Void();
+}
+
+ACTOR Future<Void> PreSplit(Reference<DDTeamCollection> self, MoveKeysLock lock, const DDEnabledState* ddEnabledState) {
+	TraceEvent("PreSplitBegin");
+	state Transaction tr(self->cx);
+	tr.setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
+	tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+	Optional<Value> value = wait(tr.get(dataDistributionInitShardKey));
+	if (value == dataDistributionInitShardDone) {
+		return Void();
+	}
+
+	self->doBuildTeams = true;
+	wait(DDTeamCollection::checkBuildTeams(self.getPtr()));
+	TraceEvent("PreSplitWaitBuildTeam").detail("TimeSize", self->teams.size());
+
+	state std::vector<std::string> sps = { "\x00", "\x44", "\x88", "\xbb", "\xff" };
+	state int i = 0;
+	state int j = 0;
+	while (i < sps.size() - 1) {
+		state KeyRangeRef keys(sps[i], sps[i + 1]);
+		if (self->teams[j]->isHealthy()) {
+			try {
+				wait(moveShard(self->cx, keys, self->teams[j], lock, ddEnabledState));
+				++i;
+				j = (j + 1) % self->teams.size();
+				break;
+			} catch (Error& e) {
+				TraceEvent("PreSplitMoveShardError").detail("Begin", keys.begin).detail("End", keys.end).error(e, true);
+				if (e.code() == error_code_move_to_removed_server) {
+					j = (j + 1) % self->teams.size();
+				} else if (e.code() == error_code_commit_unknown_result) {
+					// Retry it.
+				} else {
+					throw e;
+				}
+			}
+		} else {
+			j = (j + 1) % self->teams.size();
+		}
+	}
+
+	TraceEvent("PreSplitMoveShardEnd");
+	loop {
+		try {
+			tr.reset();
+			tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+			tr.setOption(FDBTransactionOptions::LOCK_AWARE);
+			tr.set(dataDistributionInitShardKey, dataDistributionInitShardDone);
+			wait(tr.commit());
+			break;
+		} catch (Error& e) {
+			wait(tr.onError(e));
+		}
+	}
+
+	TraceEvent("PreSplitFinal");
+	// int ignore = wait(setDDMode(self->cx, 0));
+
+	TraceEvent("PreSplitEnd");
+	return Void();
+}
+
 // Take a snapshot of necessary data structures from `DDTeamCollection` and print them out with yields to avoid slow
 // task on the run loop.
 ACTOR Future<Void> printSnapshotTeamsInfo(Reference<DDTeamCollection> self) {
@@ -3894,7 +3991,7 @@ ACTOR Future<Void> teamTracker(DDTeamCollection* self, Reference<TCTeamInfo> tea
 						rs.keys = shards[i];
 						rs.priority = maxPriority;
 
-						self->output.send(rs);
+						// self->output.send(rs);
 						TraceEvent("SendRelocateToDDQueue", self->distributorId)
 						    .suppressFor(1.0)
 						    .detail("ServerPrimary", self->primary)
@@ -6227,6 +6324,7 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributorData> self,
 			                                    "DDTracker",
 			                                    self->ddId,
 			                                    &normalDDQueueErrors()));
+			// Might be necessary to wait for intial split.
 			actors.push_back(reportErrorsExcept(dataDistributionQueue(cx,
 			                                                          output,
 			                                                          input.getFuture(),
@@ -6307,6 +6405,7 @@ ACTOR Future<Void> dataDistribution(Reference<DataDistributorData> self,
 
 			actors.push_back(printSnapshotTeamsInfo(primaryTeamCollection));
 			actors.push_back(yieldPromiseStream(output.getFuture(), input));
+			actors.push_back(PreSplit(primaryTeamCollection, lock, ddEnabledState));
 
 			wait(waitForAll(actors));
 			return Void();
