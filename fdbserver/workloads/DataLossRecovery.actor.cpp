@@ -72,32 +72,38 @@ struct DataLossRecoveryWorkload : TestWorkload {
 	ACTOR Future<Void> _start(DataLossRecoveryWorkload* self, Database cx) {
 		std::cout << "Waiting for pre-split." << std::endl;
 		state ReadYourWritesTransaction tr(cx);
-		loop {
-			try {
-				tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
-				// state Future<Void> watchFuture = tr.watch(dataDistributionInitShardKey);
-				// wait(tr.commit());
-				// wait(watchFuture);
-				// tr.reset();
-				// tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
-				Optional<Value> value = wait(tr.get(dataDistributionInitShardKey));
-				if (!value.present()) {
-					std::cout << "Init not enabled." << std::endl;
-					break;
-				}
-				if (value == dataDistributionInitShardDone) {
-					std::cout << "Init done." << std::endl;
-					break;
-				}
-				std::cout << "continue waiting Init done." << std::endl;
-				wait(delay(5));
-				tr.reset();
-			} catch (Error& e) {
-				wait(tr.onError(e));
-			}
-		}
+		// loop {
+		// 	try {
+		// 		tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+		// 		// state Future<Void> watchFuture = tr.watch(dataDistributionInitShardKey);
+		// 		// wait(tr.commit());
+		// 		// wait(watchFuture);
+		// 		// tr.reset();
+		// 		// tr.setOption(FDBTransactionOptions::ACCESS_SYSTEM_KEYS);
+		// 		Optional<Value> value = wait(tr.get(dataDistributionInitShardKey));
+		// 		if (!value.present()) {
+		// 			std::cout << "Init not enabled." << std::endl;
+		// 			break;
+		// 		}
+		// 		if (value == dataDistributionInitShardDone) {
+		// 			std::cout << "Init done." << std::endl;
+		// 			break;
+		// 		}
+		// 		std::cout << "continue waiting Init done." << std::endl;
+		// 		wait(delay(5));
+		// 		tr.reset();
+		// 	} catch (Error& e) {
+		// 		wait(tr.onError(e));
+		// 	}
+		// }
 
 		state std::vector<Key> sps = { "\x00"_sr, "\x44"_sr, "\x88"_sr, "\xbb"_sr, "\xff"_sr };
+		std::vector<KeyRange> shards = wait(splitShard(cx->getConnectionRecord(), sps));
+
+		for (const auto& shard : shards) {
+			std::cout << "[" << shard.begin.toString() << ", " << shard.end.toString() << ")\n";
+		}
+
 		state Transaction validateTr(cx);
 		state int i = 0;
 		for (i = 0; i < sps.size(); ++i) {

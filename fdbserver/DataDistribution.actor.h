@@ -124,6 +124,13 @@ struct GetMetricsListRequest {
 	GetMetricsListRequest(KeyRange const& keys, const int shardLimit) : keys(keys), shardLimit(shardLimit) {}
 };
 
+struct GetTeamsRequest {
+	int num;
+	Promise<std::vector<std::vector<UID>>> reply;
+
+	explicit GetTeamsRequest(int num) : num(num) {}
+};
+
 struct TeamCollectionInterface {
 	PromiseStream<GetTeamRequest> getTeam;
 };

@@ -2202,6 +2202,25 @@ ACTOR Future<Void> forceRecovery(Reference<IClusterConnectionRecord> clusterFile
 	}
 }
 
+ACTOR Future<std::vector<KeyRange>> splitShard(Reference<IClusterConnectionRecord> clusterFile,
+                                               std::vector<Key> splitPoints) {
+	if (splitPoints.empty()) {
+		return std::vector<KeyRange>();
+	}	
+	state Reference<AsyncVar<Optional<ClusterInterface>>> clusterInterface(new AsyncVar<Optional<ClusterInterface>>);
+	state Future<Void> leaderMon = monitorLeader<ClusterInterface>(clusterFile, clusterInterface);
+
+	loop {
+		if (clusterInterface->get().present()) {
+
+			SplitShardReply reply = wait(clusterInterface->get().get().splitShard.getReply(
+			    SplitShardRequest(splitPoints, deterministicRandom()->randomUniqueID())));
+			return reply.shards;
+		}
+		wait(clusterInterface->onChange());
+	}
+}
+
 ACTOR Future<Void> waitForPrimaryDC(Database cx, StringRef dcId) {
 	state ReadYourWritesTransaction tr(cx);
 

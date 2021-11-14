@@ -307,20 +307,21 @@ struct SplitShardReply {
 	}
 };
 
-// Split keyrange [shard.begin, shard.end) into num shards.
+// Split keyrange [shard.begin, shard.end) at
 // Split points are chosen as the arithmeticlly equal division points of the given range.
 struct SplitShardRequest {
 	constexpr static FileIdentifier file_identifier = 1384443;
-	KeyRange shard;
-	int num;
+	std::vector<Key> splitPoints;
+	UID id;
 	ReplyPromise<SplitShardReply> reply;
 
-	SplitShardRequest() : num(0) {}
-	SplitShardRequest(KeyRange shard, int num) : shard{ std::move(shard) }, num(num) {}
+	SplitShardRequest() {}
+	SplitShardRequest(std::vector<Key> splitPoints, UID id)
+	  : splitPoints{ std::move(splitPoints) }, id{ std::move(id) } {}
 
 	template <class Ar>
 	void serialize(Ar& ar) {
-		serializer(ar, shard, num, reply);
+		serializer(ar, splitPoints, id, reply);
 	}
 };
 #endif

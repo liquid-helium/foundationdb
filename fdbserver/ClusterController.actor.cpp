@@ -5049,6 +5049,55 @@ ACTOR Future<Void> handleForcedRecoveries(ClusterControllerData* self, ClusterCo
 	}
 }
 
+ACTOR Future<Void> handleSplitShard(ClusterControllerData* self, ClusterControllerFullInterface interf) {
+	state std::unordered_set<UID> processedRequests;
+	loop {
+		state SplitShardRequest req = waitNext(interf.clientInterface.splitShard.getFuture());
+		// if (req.splitPoints.empty()) {
+		// 	req.reply.sendError(invalid);
+		// }
+		ASSERT(!req.splitPoints.empty());
+		TraceEvent("SplitShardStart", self->id);
+		    // .detail("ClusterControllerDcId", self->clusterControllerDcId)
+		    // .detail("RequestID", req.id)
+		    // .detail("Begin", *(req.splitPoints.begin()))
+		    // .detail("End", *(req.splitPoints.end()));
+		// .detail("DesiredNumberOfShards", req.num);
+
+		if (processedRequests.count(req.id) == 0) {
+			processedRequests.insert(req.id);
+			try {
+				loop {
+					if (self->db.serverInfo->get().distributor.present()) {
+						break;
+					} else {
+						wait(self->db.serverInfo->onChange());
+					}
+				}
+				SplitShardReply reply =
+				    wait(self->db.serverInfo->get().distributor.get().distributorSplitRange.getReply(
+				        DistributorSplitRangeRequest(req.splitPoints)));
+				TraceEvent("SplitShardFinish", self->id);
+				req.reply.send(reply);
+			} catch (Error& e) {
+				TraceEvent("SplitShardError", self->id)
+				    .detail("ClusterControllerDcId", self->clusterControllerDcId)
+				    .detail("RequestID", req.id)
+				    .detail("Begin", *(req.splitPoints.begin()))
+				    .detail("End", *(req.splitPoints.end()))
+				    .error(e, true);
+				req.reply.sendError(e);
+			}
+		} else {
+			TraceEvent("SplitShardDuplicateRequestID", self->id)
+			    .detail("ClusterControllerDcId", self->clusterControllerDcId)
+			    .detail("RequestID", req.id)
+			    .detail("Begin", *(req.splitPoints.begin()))
+			    .detail("End", *(req.splitPoints.end()));
+		}
+	}
+}
+
 ACTOR Future<Void> startDataDistributor(ClusterControllerData* self) {
 	wait(delay(0.0)); // If master fails at the same time, give it a chance to clear master PID.
 
@@ -5484,6 +5533,7 @@ ACTOR Future<Void> clusterControllerCore(ClusterControllerFullInterface interf,
 	self.addActor.send(updatedChangedDatacenters(&self));
 	self.addActor.send(updateDatacenterVersionDifference(&self));
 	self.addActor.send(handleForcedRecoveries(&self, interf));
+	self.addActor.send(handleSplitShard(&self, interf));
 	self.addActor.send(monitorDataDistributor(&self));
 	self.addActor.send(monitorRatekeeper(&self));
 	if (CLIENT_KNOBS->ENABLE_BLOB_GRANULES) {
