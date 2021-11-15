@@ -40,9 +40,11 @@ struct MoveKeysLock {
 };
 
 class DDEnabledState {
-	// in-memory flag to disable DD
+	// in-memory flag to disable DD, this flag doesn't correspond to any persisted state.
 	bool ddEnabled = true;
 	UID ddEnabledStatusUID;
+	// in-memory flag to disable data move, other DD functionalities are not affected.
+    bool dataMoveEnabled = true;
 
 public:
 	// checks if DD is enabled/disable transiently
@@ -51,6 +53,13 @@ public:
 	// transiently enable(true) or disable(false) the DD. If the process
 	// restarts, the state will be forgotten.
 	bool setDDEnabled(bool status, UID snapUID);
+
+	// checks if data move is enabled/disable transiently
+	bool isDataMoveEnabled() const;
+
+	// transiently enable(true) or disable(false) the DD. If the process
+	// restarts, the state will be forgotten.
+	void setDataMoveEnabled(bool status);
 };
 
 // Calling moveKeys, etc with the return value of this actor ensures that no movekeys, etc

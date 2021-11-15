@@ -97,7 +97,7 @@ struct DataLossRecoveryWorkload : TestWorkload {
 		// 	}
 		// }
 
-		state std::vector<Key> sps = { "\x00"_sr, "\x44"_sr, "\x88"_sr, "\xbb"_sr, "\xff"_sr };
+		state std::vector<Key> sps = { "a"_sr, "b"_sr, "c"_sr, "d"_sr, "e"_sr };
 		std::vector<KeyRange> shards = wait(splitShard(cx->getConnectionRecord(), sps));
 
 		for (const auto& shard : shards) {

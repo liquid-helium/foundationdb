@@ -3095,18 +3095,52 @@ ACTOR Future<Void> moveShard(Database cx,
 
 	state std::unique_ptr<FlowLock> startMoveKeysParallelismLock = std::make_unique<FlowLock>();
 	state std::unique_ptr<FlowLock> finishMoveKeysParallelismLock = std::make_unique<FlowLock>();
+	state UID owner = deterministicRandom()->randomUniqueID();
+	state Transaction txn(cx);
+	loop {
+		try {
+			loop {
+				try {
+					BinaryWriter wrMyOwner(Unversioned());
+					wrMyOwner << owner;
+					txn.set(moveKeysLockOwnerKey, wrMyOwner.toValue());
+					wait(txn.commit());
+					break;
+				} catch (Error& e) {
+					TraceEvent("SetMoveKeysLockOwnerKeyError").error(e);
+					wait(txn.onError(e));
+				}
+			}
 
-	wait(moveKeys(cx,
-	              keys,
-	              team,
-	              team,
-	              lock,
-	              Promise<Void>(),
-	              startMoveKeysParallelismLock.get(),
-	              finishMoveKeysParallelismLock.get(),
-	              false,
-	              UID(), // for logging only
-	              ddEnabledState));
+			MoveKeysLock moveKeysLock;
+			moveKeysLock.myOwner = owner;
+
+			wait(moveKeys(cx,
+			              keys,
+			              team,
+			              team,
+			              moveKeysLock,
+			              Promise<Void>(),
+			              startMoveKeysParallelismLock.get(),
+			              finishMoveKeysParallelismLock.get(),
+			              false,
+			              UID(), // for logging only
+			              ddEnabledState));
+			break;
+		} catch (Error& e) {
+			TraceEvent("MoveShardError")
+			    .detail("Begin", keys.begin)
+			    .detail("End", keys.end)
+			    .detail("NewTeam", describe(team))
+			    .error(e, true);
+			if (e.code() == error_code_movekeys_conflict) {
+				txn.reset();
+				wait(delay(1.0));
+			} else {
+				throw e;
+			}
+		}
+	}
 
 	TraceEvent("PreSplitMoveShardFinish")
 	    .detail("Begin", keys.begin)
@@ -6048,7 +6082,10 @@ ACTOR Future<Void> pollMoveKeysLock(Database cx, MoveKeysLock lock, const DDEnab
 				wait(checkMoveKeysLockReadOnly(&tr, lock, ddEnabledState));
 				break;
 			} catch (Error& e) {
-				wait(tr.onError(e));
+				// 
+				if (e.code() != error_code_datamove_disabled) {
+					wait(tr.onError(e));
+				}
 			}
 		}
 	}
@@ -6821,7 +6858,7 @@ ACTOR Future<Void> ddSplitShard(DistributorSplitRangeRequest req,
 			    .error(e, true);
 			if (e.code() == error_code_movekeys_conflict) {
 				// Retry.
-			}else if (e.code() == error_code_move_to_removed_server) {
+			} else if (e.code() == error_code_move_to_removed_server) {
 				j = (j + 1) % num;
 			} else {
 				// throw e;
@@ -6833,6 +6870,7 @@ ACTOR Future<Void> ddSplitShard(DistributorSplitRangeRequest req,
 
 	TraceEvent("DDSplitShardEnd", self->ddId);
 	req.reply.send(reply);
+	// ddEnabledState->setDDEnabled(true, owner);
 	return Void();
 }
 

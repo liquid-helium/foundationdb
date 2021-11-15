@@ -58,6 +58,15 @@ bool DDEnabledState::setDDEnabled(bool status, UID snapUID) {
 	return true;
 }
 
+bool DDEnabledState::isDataMoveEnabled() const {
+	return dataMoveEnabled;
+}
+
+void DDEnabledState::setDataMoveEnabled(bool status) {
+	TraceEvent("SetDataMoveEnabled").detail("Status", status);
+	dataMoveEnabled = status;
+}
+
 ACTOR Future<MoveKeysLock> takeMoveKeysLock(Database cx, UID ddId) {
 	state Transaction tr(cx);
 	loop {
@@ -102,6 +111,10 @@ ACTOR static Future<Void> checkMoveKeysLock(Transaction* tr,
 	if (!ddEnabledState->isDDEnabled()) {
 		TraceEvent(SevDebug, "DDDisabledByInMemoryCheck").log();
 		throw movekeys_conflict();
+	}
+	if (!ddEnabledState->isDataMoveEnabled()) {
+		TraceEvent(SevWarn, "DataMoveDisabledByInMemoryCheck").log();
+		throw datamove_disabled();
 	}
 	Optional<Value> readVal = wait(tr->get(moveKeysLockOwnerKey));
 	UID currentOwner = readVal.present() ? BinaryReader::fromStringRef<UID>(readVal.get(), Unversioned()) : UID();

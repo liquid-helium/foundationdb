@@ -5050,25 +5050,25 @@ ACTOR Future<Void> handleForcedRecoveries(ClusterControllerData* self, ClusterCo
 }
 
 ACTOR Future<Void> handleSplitShard(ClusterControllerData* self, ClusterControllerFullInterface interf) {
-	state std::unordered_set<UID> processedRequests;
+	state std::unordered_map<UID, ErrorOr<SplitShardReply>> processedRequests;
 	loop {
 		state SplitShardRequest req = waitNext(interf.clientInterface.splitShard.getFuture());
 		// if (req.splitPoints.empty()) {
 		// 	req.reply.sendError(invalid);
 		// }
 		ASSERT(!req.splitPoints.empty());
-		TraceEvent("SplitShardStart", self->id);
-		    // .detail("ClusterControllerDcId", self->clusterControllerDcId)
-		    // .detail("RequestID", req.id)
-		    // .detail("Begin", *(req.splitPoints.begin()))
-		    // .detail("End", *(req.splitPoints.end()));
+		TraceEvent("SplitShardStart", self->id)
+		    .detail("ClusterControllerDcId", self->clusterControllerDcId)
+		    .detail("RequestID", req.id)
+		    .detail("Begin", req.splitPoints.begin()->toString())
+		    .detail("End", req.splitPoints.end()->toString());
 		// .detail("DesiredNumberOfShards", req.num);
 
 		if (processedRequests.count(req.id) == 0) {
-			processedRequests.insert(req.id);
 			try {
 				loop {
 					if (self->db.serverInfo->get().distributor.present()) {
+						state UID ddID = self->db.serverInfo->get().distributor.get().id();
 						break;
 					} else {
 						wait(self->db.serverInfo->onChange());
@@ -5077,8 +5077,16 @@ ACTOR Future<Void> handleSplitShard(ClusterControllerData* self, ClusterControll
 				SplitShardReply reply =
 				    wait(self->db.serverInfo->get().distributor.get().distributorSplitRange.getReply(
 				        DistributorSplitRangeRequest(req.splitPoints)));
-				TraceEvent("SplitShardFinish", self->id);
 				req.reply.send(reply);
+				processedRequests.emplace(req.id, reply);
+				TraceEvent("SplitShardFinish", self->id);
+				const auto& distributor = self->db.serverInfo->get().distributor;
+				if (distributor.present() && distributor.get().id() == ddID) {
+					TraceEvent("SplitShardHaltDataDistributor", self->id)
+					    .detail("DDID", distributor.get().id())
+					    .detail("DcID", printable(self->clusterControllerDcId));
+					DataDistributorSingleton(distributor).halt(self, distributor.get().locality.processId());
+				}
 			} catch (Error& e) {
 				TraceEvent("SplitShardError", self->id)
 				    .detail("ClusterControllerDcId", self->clusterControllerDcId)
@@ -5087,6 +5095,14 @@ ACTOR Future<Void> handleSplitShard(ClusterControllerData* self, ClusterControll
 				    .detail("End", *(req.splitPoints.end()))
 				    .error(e, true);
 				req.reply.sendError(e);
+				processedRequests.emplace(req.id, e);
+				const auto& distributor = self->db.serverInfo->get().distributor;
+				if (distributor.present() && distributor.get().id() == ddID) {
+					TraceEvent("SplitShardHaltDataDistributor", self->id)
+					    .detail("DDID", distributor.get().id())
+					    .detail("DcID", printable(self->clusterControllerDcId));
+					DataDistributorSingleton(distributor).halt(self, distributor.get().locality.processId());
+				}
 			}
 		} else {
 			TraceEvent("SplitShardDuplicateRequestID", self->id)
@@ -5094,6 +5110,12 @@ ACTOR Future<Void> handleSplitShard(ClusterControllerData* self, ClusterControll
 			    .detail("RequestID", req.id)
 			    .detail("Begin", *(req.splitPoints.begin()))
 			    .detail("End", *(req.splitPoints.end()));
+			const ErrorOr<SplitShardReply> res = processedRequests[req.id];
+			if (res.isError()) {
+				req.reply.sendError(res.getError());
+			} else {
+				req.reply.send(res.get());
+			}
 		}
 	}
 }
