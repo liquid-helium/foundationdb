@@ -2,6 +2,7 @@
 StderrSeverity = 30
 allowDisablingTenants = false
 allowDefaultTenant = false
+storageEngineType = 4
 
 [[test]]
 testTitle = 'FuzzApiCorrectness'
