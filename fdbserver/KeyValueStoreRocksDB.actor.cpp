@@ -852,6 +852,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 	struct Writer : IThreadPoolReceiver {
 		DB& db;
 		CF& cf;
+		std::vector<rocksdb::ColumnFamilyHandle*> handles;
 
 		UID id;
 		std::shared_ptr<rocksdb::RateLimiter> rateLimiter;
@@ -903,9 +904,9 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		}
 
 		~Writer() override {
-			if (db) {
-				delete db;
-			}
+			// if (db) {
+			// 	delete db;
+			// }
 		}
 
 		void init() override {}
@@ -948,7 +949,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				options.rate_limiter = rateLimiter;
 			}
 
-			std::vector<rocksdb::ColumnFamilyHandle*> handles;
+			// std::vector<rocksdb::ColumnFamilyHandle*> handles;
 			status = rocksdb::DB::Open(options, a.path, descriptors, &handles, &db);
 
 			if (!status.ok()) {
@@ -966,6 +967,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 
 			if (cf == nullptr) {
 				status = db->CreateColumnFamily(cfOptions, SERVER_KNOBS->DEFAULT_FDB_ROCKSDB_COLUMN_FAMILY, &cf);
+				handles.push_back(cf);
 				if (!status.ok()) {
 					logRocksDBError(status, "Open");
 					a.done.sendError(statusToError(status));
@@ -983,8 +985,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				// The current thread and main thread are same when the code runs in simulation.
 				// blockUntilReady() is getting the thread into deadlock state, so directly calling
 				// the metricsLogger.
-				a.metrics = rocksDBMetricLogger(options.statistics, perfContextMetrics, db, readIterPool) &&
-				            flowLockLogger(a.readLock, a.fetchLock) && refreshReadIteratorPool(readIterPool);
+				// a.metrics = rocksDBMetricLogger(options.statistics, perfContextMetrics, db, readIterPool) &&
+				//             flowLockLogger(a.readLock, a.fetchLock) && refreshReadIteratorPool(readIterPool);
 			} else {
 				onMainThread([&] {
 					a.metrics = rocksDBMetricLogger(options.statistics, perfContextMetrics, db, readIterPool) &&
@@ -1121,6 +1123,13 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				a.done.send(Void());
 				return;
 			}
+			for (rocksdb::ColumnFamilyHandle* handle : handles) {
+				// if (handle != nullptr && handle->GetName() != rocksdb::kDefaultColumnFamilyName) {
+				if (handle != nullptr) {
+					db->DestroyColumnFamilyHandle(handle);
+				}
+			}
+			handles.clear();
 			auto s = db->Close();
 			if (!s.ok()) {
 				logRocksDBError(s, "Close");
@@ -1194,6 +1203,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				platform::eraseDirectoryRecursive(checkpointDir);
 				const std::string cwd = platform::getWorkingDirectory() + "/";
 				s = checkpoint->ExportColumnFamily(cf, checkpointDir, &pMetadata);
+				delete checkpoint;
 
 				if (!s.ok()) {
 					logRocksDBError(s, "Checkpoint");
@@ -1252,6 +1262,8 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 				importOptions.move_files = true;
 				status = db->CreateColumnFamilyWithImport(
 				    getCFOptions(), SERVER_KNOBS->DEFAULT_FDB_ROCKSDB_COLUMN_FAMILY, importOptions, metaData, &cf);
+
+				handles.push_back(cf);
 
 				if (!status.ok()) {
 					logRocksDBError(status, "Restore");
@@ -1712,6 +1724,7 @@ struct RocksDBKeyValueStore : IKeyValueStore {
 		wait(self->writeThread->stop());
 		if (self->closePromise.canBeSet())
 			self->closePromise.send(Void());
+		delete self->db;
 		delete self;
 	}
 
