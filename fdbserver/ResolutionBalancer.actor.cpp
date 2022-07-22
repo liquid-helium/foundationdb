@@ -39,7 +39,7 @@ void ResolutionBalancer::setChangesInReply(UID requestingProxy, GetCommitVersion
 		rep.resolverChangesVersion = resolverChangesVersion;
 		resolverNeedingChanges.erase(requestingProxy);
 
-		TEST(!rep.resolverChanges.empty()); // resolution balancing moves keyranges
+		CODE_PROBE(!rep.resolverChanges.empty(), "resolution balancing moves keyranges");
 		if (resolverNeedingChanges.empty())
 			resolverChanges.set(Standalone<VectorRef<ResolverMoveRef>>());
 	}
@@ -115,8 +115,9 @@ static std::pair<KeyRangeRef, bool> findRange(CoalescedKeyRangeMap<int>& key_res
 ACTOR Future<Void> ResolutionBalancer::resolutionBalancing_impl(ResolutionBalancer* self) {
 	wait(self->triggerResolution.onTrigger());
 
-	state CoalescedKeyRangeMap<int> key_resolver;
-	key_resolver.insert(allKeys, 0);
+	state CoalescedKeyRangeMap<int> key_resolver(
+	    0, SERVER_KNOBS->PROXY_USE_RESOLVER_PRIVATE_MUTATIONS ? normalKeys.end : allKeys.end);
+	key_resolver.insert(SERVER_KNOBS->PROXY_USE_RESOLVER_PRIVATE_MUTATIONS ? normalKeys : allKeys, 0);
 	loop {
 		wait(delay(SERVER_KNOBS->MIN_BALANCE_TIME, TaskPriority::ResolutionMetrics));
 		while (self->resolverChanges.get().size())

@@ -49,7 +49,7 @@ struct CycleWorkload : TestWorkload {
 		actorCount = getOption(options, "actorsPerClient"_sr, transactionsPerSecond / 5);
 		nodeCount = getOption(options, "nodeCount"_sr, transactionsPerSecond * clientCount);
 		keyPrefix = unprintable(getOption(options, "keyPrefix"_sr, LiteralStringRef("")).toString());
-		traceParentProbability = getOption(options, "traceParentProbability "_sr, 0.01);
+		traceParentProbability = getOption(options, "traceParentProbability"_sr, 0.01);
 		minExpectedTransactionsPerSecond = transactionsPerSecond * getOption(options, "expectedRate"_sr, 0.7);
 	}
 
@@ -104,11 +104,11 @@ struct CycleWorkload : TestWorkload {
 				state double tstart = now();
 				state int r = deterministicRandom()->randomInt(0, self->nodeCount);
 				state Transaction tr(cx);
-				if (deterministicRandom()->random01() >= self->traceParentProbability) {
+				if (deterministicRandom()->random01() <= self->traceParentProbability) {
 					state Span span("CycleClient"_loc);
-					TraceEvent("CycleTracingTransaction", span.context).log();
+					TraceEvent("CycleTracingTransaction", span.context.traceID).log();
 					tr.setOption(FDBTransactionOptions::SPAN_PARENT,
-					             BinaryWriter::toValue(span.context, Unversioned()));
+					             BinaryWriter::toValue(span.context, IncludeVersion()));
 				}
 				while (true) {
 					try {
@@ -260,6 +260,11 @@ struct CycleWorkload : TestWorkload {
 				} catch (Error& e) {
 					retryCount++;
 					TraceEvent(retryCount > 20 ? SevWarnAlways : SevWarn, "CycleCheckError").error(e);
+					if (g_network->isSimulated() && retryCount > 50) {
+						CODE_PROBE(true, "Cycle check enable speedUpSimulation because too many transaction_too_old()");
+						// try to make the read window back to normal size (5 * version_per_sec)
+						g_simulator.speedUpSimulation = true;
+					}
 					wait(tr.onError(e));
 				}
 			}
@@ -268,4 +273,4 @@ struct CycleWorkload : TestWorkload {
 	}
 };
 
-WorkloadFactory<CycleWorkload> CycleWorkloadFactory("Cycle");
+WorkloadFactory<CycleWorkload> CycleWorkloadFactory("Cycle", true);
