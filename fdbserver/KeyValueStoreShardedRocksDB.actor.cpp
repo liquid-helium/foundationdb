@@ -2127,6 +2127,8 @@ struct ShardedRocksDBKeyValueStore : IKeyValueStore {
 					    .detail("Reason", shard == nullptr ? "Not Exist" : "Not Initialized");
 					continue;
 				}
+				// TraceEvent(SevDebug, "ShardedRocksReadRange", logId).detail("Range", range);
+				// .detail("PhysicalShard", shard->toString());
 				auto bytesRead = readRangeInDb(shard, range, rowLimit, byteLimit, &result);
 				if (bytesRead < 0) {
 					// Error reading an instance.

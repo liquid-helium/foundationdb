@@ -8634,6 +8634,7 @@ ACTOR Future<Void> updateStorage(StorageServer* data) {
 					state double start = now();
 					wait(data->storage.cleanUpShardsIfNeeded(emptyShardIds));
 					TraceEvent(SevInfo, "RemoveEmptyPhysicalShards", data->thisServerID)
+					    .detail("EmptyShards", describe(emptyShardIds))
 					    .detail("NumShards", emptyShardIds.size())
 					    .detail("TimeSpent", now() - start);
 				}
