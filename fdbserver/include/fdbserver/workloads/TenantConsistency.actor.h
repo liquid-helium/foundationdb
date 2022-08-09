@@ -60,8 +60,9 @@ private:
 
 	TenantData metadata;
 
-	static inline const int64_t metaclusterMaxTenants =
-	    CLIENT_KNOBS->MAX_DATA_CLUSTERS * CLIENT_KNOBS->MAX_TENANTS_PER_CLUSTER;
+	// Note: this check can only be run on metaclusters with a reasonable number of tenants, as should be
+	// the case with the current metacluster simulation workloads
+	static inline const int metaclusterMaxTenants = 10e6;
 
 	ACTOR static Future<Void> loadTenantMetadata(TenantConsistencyCheck* self) {
 		state Reference<typename DB::TransactionT> tr = self->db->createTransaction();
@@ -75,16 +76,16 @@ private:
 			try {
 				tr->setOption(FDBTransactionOptions::READ_SYSTEM_KEYS);
 				wait(store(self->metadata.metaclusterRegistration,
-				           MetaclusterMetadata::metaclusterRegistration.get(tr)));
+				           MetaclusterMetadata::metaclusterRegistration().get(tr)));
 
 				self->metadata.clusterType = self->metadata.metaclusterRegistration.present()
 				                                 ? self->metadata.metaclusterRegistration.get().clusterType
 				                                 : ClusterType::STANDALONE;
 
 				if (self->metadata.clusterType == ClusterType::METACLUSTER_MANAGEMENT) {
-					tenantMetadata = &MetaclusterAPI::ManagementClusterMetadata::tenantMetadata;
+					tenantMetadata = &MetaclusterAPI::ManagementClusterMetadata::tenantMetadata();
 				} else {
-					tenantMetadata = &TenantMetadata::instance;
+					tenantMetadata = &TenantMetadata::instance();
 				}
 
 				wait(
