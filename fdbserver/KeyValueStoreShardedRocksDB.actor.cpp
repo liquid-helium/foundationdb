@@ -1114,6 +1114,9 @@ public:
 	Reference<Histogram> getReadRangeNewIteratorHistogram(int index);
 	Reference<Histogram> getReadValueGetHistogram(int index);
 	Reference<Histogram> getReadPrefixGetHistogram(int index);
+	std::shared_ptr<LatencySample> getReadLatencySample(const int index);
+	std::shared_ptr<LatencySample> getScanLatencySample(const int index);
+	std::shared_ptr<LatencySample> getReadQueueLatencySample(const int index);
 	// For Writer
 	Reference<Histogram> getCommitLatencyHistogram();
 	Reference<Histogram> getCommitActionHistogram();
@@ -1147,6 +1150,9 @@ private:
 	std::vector<Reference<Histogram>> readRangeNewIteratorHistograms; // Zhe: haven't used?
 	std::vector<Reference<Histogram>> readValueGetHistograms;
 	std::vector<Reference<Histogram>> readPrefixGetHistograms;
+	std::vector<std::shared_ptr<LatencySample>> readLatency;
+	std::vector<std::shared_ptr<LatencySample>> scanLatency;
+	std::vector<std::shared_ptr<LatencySample>> readQueueLatency;
 	// Writer Histogram
 	Reference<Histogram> commitLatencyHistogram;
 	Reference<Histogram> commitActionHistogram;
@@ -1194,6 +1200,15 @@ Reference<Histogram> RocksDBMetrics::getReadValueGetHistogram(int index) {
 }
 Reference<Histogram> RocksDBMetrics::getReadPrefixGetHistogram(int index) {
 	return readPrefixGetHistograms[index];
+}
+std::shared_ptr<LatencySample> RocksDBMetrics::getReadLatencySample(const int index) {
+	return this->readLatency[index];
+}
+std::shared_ptr<LatencySample> RocksDBMetrics::getScanLatencySample(const int index) {
+	return this->scanLatency[index];
+}
+std::shared_ptr<LatencySample> RocksDBMetrics::getReadQueueLatencySample(const int index) {
+	return this->readQueueLatency[index];
 }
 Reference<Histogram> RocksDBMetrics::getCommitLatencyHistogram() {
 	return commitLatencyHistogram;
@@ -1382,6 +1397,18 @@ RocksDBMetrics::RocksDBMetrics(UID debugID, std::shared_ptr<rocksdb::Statistics>
 		    ROCKSDBSTORAGE_HISTOGRAM_GROUP, ROCKSDB_READVALUE_GET_HISTOGRAM, Histogram::Unit::microseconds));
 		readPrefixGetHistograms.push_back(Histogram::getHistogram(
 		    ROCKSDBSTORAGE_HISTOGRAM_GROUP, ROCKSDB_READPREFIX_GET_HISTOGRAM, Histogram::Unit::microseconds));
+		readLatency.push_back(std::make_shared<LatencySample>("ShardedRocksReadLatency",
+		                                                      debugID,
+		                                                      SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+		                                                      SERVER_KNOBS->LATENCY_SAMPLE_SIZE));
+		scanLatency.push_back(std::make_shared<LatencySample>("ShardedRocksScanLatency",
+		                                                      debugID,
+		                                                      SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+		                                                      SERVER_KNOBS->LATENCY_SAMPLE_SIZE));
+		readQueueLatency.push_back(std::make_shared<LatencySample>("ShardedRocksReadQueueLatency",
+		                                                           debugID,
+		                                                           SERVER_KNOBS->LATENCY_METRICS_LOGGING_INTERVAL,
+		                                                           SERVER_KNOBS->LATENCY_SAMPLE_SIZE));
 	}
 	commitLatencyHistogram = Histogram::getHistogram(
 	    ROCKSDBSTORAGE_HISTOGRAM_GROUP, ROCKSDB_COMMIT_LATENCY_HISTOGRAM, Histogram::Unit::microseconds);
@@ -1950,10 +1977,10 @@ struct ShardedRocksDBKeyValueStore : IKeyValueStore {
 		};
 
 		void action(ReadValueAction& a) {
-			double readBeginTime = timer_monotonic();
+			const double readBeginTime = timer_monotonic();
 			if (a.getHistograms) {
 				rocksDBMetrics->getReadValueQueueWaitHistogram(threadIndex)->sampleSeconds(readBeginTime - a.startTime);
-			}
+			}						   
 			Optional<TraceBatch> traceBatch;
 			if (a.debugID.present()) {
 				traceBatch = { TraceBatch{} };
@@ -1979,10 +2006,12 @@ struct ShardedRocksDBKeyValueStore : IKeyValueStore {
 			double dbGetBeginTime = a.getHistograms ? timer_monotonic() : 0;
 			auto s = db->Get(options, a.shard->cf, toSlice(a.key), &value);
 
+			const double endTime = timer_monotonic();
 			if (a.getHistograms) {
 				rocksDBMetrics->getReadValueGetHistogram(threadIndex)
-				    ->sampleSeconds(timer_monotonic() - dbGetBeginTime);
+				    ->sampleSeconds(endTime - dbGetBeginTime);
 			}
+			rocksDBMetrics->getReadLatencySample(threadIndex)->addMeasurement(endTime - readBeginTime);
 
 			if (a.debugID.present()) {
 				traceBatch.get().addEvent("GetValueDebug", a.debugID.get().first(), "Reader.After");
@@ -2025,7 +2054,7 @@ struct ShardedRocksDBKeyValueStore : IKeyValueStore {
 		};
 
 		void action(ReadValuePrefixAction& a) {
-			double readBeginTime = timer_monotonic();
+			const double readBeginTime = timer_monotonic();
 			if (a.getHistograms) {
 				rocksDBMetrics->getReadPrefixQueueWaitHistogram(threadIndex)
 				    ->sampleSeconds(readBeginTime - a.startTime);
