@@ -1849,6 +1849,11 @@ SimulationStorageEngine chooseSimulationStorageEngine(const TestConfig& testConf
 		}
 	}
 
+	if (!testConfig.excludedStorageEngineType(SimulationStorageEngine::SHARDED_ROCKSDB)) {
+		reason = "ManualShardedRocks"_sr;
+		result = SimulationStorageEngine::SHARDED_ROCKSDB;
+	}
+
 	if (isEncryptionEnabled) {
 		// Only storage engine supporting encryption is Redwood.
 		reason = "EncryptionEnabled"_sr;
@@ -2225,6 +2230,8 @@ void SimulationConfig::setTss(const TestConfig& testConfig) {
 		// 1 or 2 tss
 		tssCount = deterministicRandom()->randomInt(1, 3);
 	}
+
+	tssCount = 0;
 
 	// reduce tss to half of extra non-seed servers that can be recruited in usable regions.
 	tssCount =
