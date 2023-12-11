@@ -70,6 +70,29 @@ void decodeKeyServersValue(std::map<Tag, UID> const& tag_uid,
 
 extern const KeyRef clusterIdKey;
 
+extern const KeyRangeRef auditKeys;
+extern const KeyRef auditPrefix;
+extern const KeyRangeRef auditRanges;
+extern const KeyRef auditRangePrefix;
+
+// Key for a particular audit
+const Key auditKey(const AuditType type, const UID& auditId);
+// KeyRange for whole audit
+const KeyRange auditKeyRange(const AuditType type);
+// Prefix for audit work progress by range
+const Key auditRangeBasedProgressPrefixFor(const AuditType type, const UID& auditId);
+// Range for audit work progress by range
+const KeyRange auditRangeBasedProgressRangeFor(const AuditType type, const UID& auditId);
+const KeyRange auditRangeBasedProgressRangeFor(const AuditType type);
+// Prefix for audit work progress by server
+const Key auditServerBasedProgressPrefixFor(const AuditType type, const UID& auditId, const UID& serverId);
+// Range for audit work progress by server
+const KeyRange auditServerBasedProgressRangeFor(const AuditType type, const UID& auditId);
+const KeyRange auditServerBasedProgressRangeFor(const AuditType type);
+
+const Value auditStorageStateValue(const AuditStorageState& auditStorageState);
+AuditStorageState decodeAuditStorageState(const ValueRef& value);
+
 // "\xff/checkpoint/[[UID]] := [[CheckpointMetaData]]"
 extern const KeyRef checkpointPrefix;
 const Key checkpointKeyFor(UID checkpointID);

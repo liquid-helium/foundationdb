@@ -124,6 +124,8 @@ ERROR( failed_to_progress, 1216, "Process has failed to make sufficient progress
 ERROR( invalid_cluster_id, 1217, "Attempted to join cluster with a different cluster ID" )
 ERROR( restart_cluster_controller, 1218, "Restart cluster controller process" )
 ERROR( please_reboot_remote_kv_store, 1219, "Need to reboot the storage engine process as it died abnormally")
+ERROR( audit_storage_failed, 1221, "Validate storage consistency operation failed" )
+ERROR( cancel_audit_storage_failed, 1231, "Failed to cancel an audit" )
 
 // 15xx Platform errors
 ERROR( platform_error, 1500, "Platform error" )
