@@ -36,6 +36,8 @@ struct DataDistributorInterface {
 	RequestStream<struct DistributorExclusionSafetyCheckRequest> distributorExclCheckReq;
 	RequestStream<struct GetDataDistributorMetricsRequest> dataDistributorMetrics;
 	RequestStream<struct DistributorSplitRangeRequest> distributorSplitRange;
+	RequestStream<struct GetStorageWigglerStateRequest> storageWigglerState;
+	RequestStream<struct TriggerAuditRequest> triggerAudit;
 
 	DataDistributorInterface() {}
 	explicit DataDistributorInterface(const struct LocalityData& l, UID id) : locality(l), myId(id) {}
@@ -56,7 +58,9 @@ struct DataDistributorInterface {
 		           distributorSnapReq,
 		           distributorExclCheckReq,
 		           dataDistributorMetrics,
-		           distributorSplitRange);
+		           distributorSplitRange,
+				   storageWigglerState,
+		           triggerAudit);
 	}
 };
 
@@ -165,4 +169,26 @@ struct DistributorSplitRangeRequest {
 	}
 };
 
+struct GetStorageWigglerStateReply {
+	constexpr static FileIdentifier file_identifier = 356721;
+	uint8_t primary = 0, remote = 0; // StorageWiggler::State enum
+	double lastStateChangePrimary = 0.0, lastStateChangeRemote = 0.0;
+
+	GetStorageWigglerStateReply() = default;
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, primary, remote);
+	}
+};
+
+struct GetStorageWigglerStateRequest {
+	constexpr static FileIdentifier file_identifier = 356722;
+	ReplyPromise<GetStorageWigglerStateReply> reply;
+
+	GetStorageWigglerStateRequest() = default;
+	template <class Ar>
+	void serialize(Ar& ar) {
+		serializer(ar, reply);
+	}
+};
 #endif // FDBSERVER_DATADISTRIBUTORINTERFACE_H
