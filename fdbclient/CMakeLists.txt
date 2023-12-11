@@ -7,6 +7,8 @@ set(FDBCLIENT_SRCS
   AsyncTaskThread.actor.cpp
   AsyncTaskThread.h
   Atomic.h
+  Audit.h
+  AuditUtils.actor.h
   AutoPublicAddress.cpp
   BackupAgent.actor.h
   BackupAgentBase.actor.cpp
