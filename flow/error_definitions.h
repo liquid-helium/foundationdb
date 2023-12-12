@@ -103,6 +103,7 @@ ERROR( operation_cancelled, 1101, "Asynchronous operation cancelled" )
 ERROR( future_released, 1102, "Future has been released" )
 ERROR( connection_leaked, 1103, "Connection object leaked" )
 ERROR( never_reply, 1104, "Never reply to the request" )
+ERROR( retry, 1105, "Retry operation" )
 
 ERROR( recruitment_failed, 1200, "Recruitment of a server failed" )   // Be careful, catching this will delete the data of a storage server or tlog permanently
 ERROR( move_to_removed_server, 1201, "Attempt to move keys to a storage server that was removed" )
@@ -125,7 +126,11 @@ ERROR( invalid_cluster_id, 1217, "Attempted to join cluster with a different clu
 ERROR( restart_cluster_controller, 1218, "Restart cluster controller process" )
 ERROR( please_reboot_remote_kv_store, 1219, "Need to reboot the storage engine process as it died abnormally")
 ERROR( audit_storage_failed, 1221, "Validate storage consistency operation failed" )
+ERROR( audit_storage_exceeded_request_limit, 1222, "Exceeded the max number of allowed concurrent audit storage requests" )
+ERROR( persist_new_audit_metadata_error, 1230, "Persist new audit metadata error" )
 ERROR( cancel_audit_storage_failed, 1231, "Failed to cancel an audit" )
+ERROR( audit_storage_cancelled, 1232, "Audit has been cancelled" )
+ERROR( audit_storage_task_outdated, 1234, "Audit task is scheduled by an outdated DD" )
 
 // 15xx Platform errors
 ERROR( platform_error, 1500, "Platform error" )

@@ -750,6 +750,11 @@ void ServerKnobs::initialize(Randomize randomize, ClientKnobs* clientKnobs, IsSi
 	init( FETCH_KEYS_PARALLELISM_BYTES,                          4e6 ); if( randomize && BUGGIFY ) FETCH_KEYS_PARALLELISM_BYTES = 3e6;
 	init( FETCH_KEYS_PARALLELISM,                                  2 );
 	init( FETCH_KEYS_LOWER_PRIORITY,                               0 );
+	init( SERVE_AUDIT_STORAGE_PARALLELISM,                         1 );
+	init( PERSIST_FINISH_AUDIT_COUNT,                             10 ); if ( isSimulated ) PERSIST_FINISH_AUDIT_COUNT = deterministicRandom()->randomInt(1, PERSIST_FINISH_AUDIT_COUNT+1);
+	init( AUDIT_RETRY_COUNT_MAX,                               10000 ); if ( isSimulated ) AUDIT_RETRY_COUNT_MAX = 10;
+	init( CONCURRENT_AUDIT_TASK_COUNT_MAX,                        20 ); if ( isSimulated ) CONCURRENT_AUDIT_TASK_COUNT_MAX = deterministicRandom()->randomInt(1, CONCURRENT_AUDIT_TASK_COUNT_MAX+1);
+	init(  ENABLE_AUDIT_VERBOSE_TRACE,                         false );
 	init( FETCH_CHANGEFEED_PARALLELISM,                            2 );
 	init( BUGGIFY_BLOCK_BYTES,                                 10000 );
 	init( STORAGE_RECOVERY_VERSION_LAG_LIMIT,				2 * MAX_READ_TRANSACTION_LIFE_VERSIONS );

@@ -102,8 +102,9 @@ struct AuditGetServerKeysRes {
 struct AuditGetKeyServersRes {
 	KeyRange completeRange;
 	Version readAtVersion;
-	int64_t readBytes;
 	std::unordered_map<UID, std::vector<KeyRange>> rangeOwnershipMap;
+	int64_t readBytes;
+
 	AuditGetKeyServersRes() = default;
 	AuditGetKeyServersRes(KeyRange completeRange,
 	                      Version readAtVersion,

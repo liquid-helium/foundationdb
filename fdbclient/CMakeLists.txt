@@ -9,6 +9,7 @@ set(FDBCLIENT_SRCS
   Atomic.h
   Audit.h
   AuditUtils.actor.h
+  AuditUtils.actor.cpp
   AutoPublicAddress.cpp
   BackupAgent.actor.h
   BackupAgentBase.actor.cpp

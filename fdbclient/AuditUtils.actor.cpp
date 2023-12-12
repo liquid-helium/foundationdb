@@ -25,7 +25,7 @@
 #include "fdbclient/NativeAPI.actor.h"
 #include "fdbclient/ReadYourWrites.h"
 #include "fdbclient/ClientKnobs.h"
-#include <fmt/format.h>
+#include "contrib/fmt-8.1.1/include/fmt/format.h"
 
 #include "flow/actorcompiler.h" // has to be last include
 
@@ -254,8 +254,8 @@ ACTOR Future<Void> clearAuditMetadataForType(Database cx,
 		}
 	} catch (Error& e) {
 		TraceEvent(SevInfo, "AuditUtilClearAuditMetadataForTypeError")
-		    .detail("AuditType", auditType)
-		    .errorUnsuppressed(e);
+		    .errorUnsuppressed(e)
+		    .detail("AuditType", auditType);
 		// We do not want audit cleanup effects DD
 	}
 
@@ -1056,84 +1056,6 @@ ACTOR Future<AuditGetServerKeysRes> getThisServerKeysFromServerKeys(UID serverID
 		TraceEvent(SevDebug, "AuditUtilGetThisServerKeysError", serverID)
 		    .errorUnsuppressed(e)
 		    .detail("AduitServerID", serverID);
-		throw e;
-	}
-
-	return res;
-}
-
-// Given an input server, get ranges within the input range via the input transaction
-// from the perspective of KeyServers system key space
-// Input: (1) Audit Server ID (for logging); (2) transaction tr; (3) within range
-// Return AuditGetKeyServersRes, including : (1) complete range by a single read range; (2) verison of the read;
-// (3) map between SSes and their ranges --- in KeyServers space, a range corresponds to multiple SSes
-ACTOR Future<AuditGetKeyServersRes> getShardMapFromKeyServers(UID auditServerId, Transaction* tr, KeyRange range) {
-	state AuditGetKeyServersRes res;
-	state std::vector<Future<Void>> actors;
-	state RangeResult readResult;
-	state RangeResult UIDtoTagMap;
-	state int64_t totalShardsCount = 0;
-	state int64_t shardsInAnonymousPhysicalShardCount = 0;
-
-	try {
-		// read
-		actors.push_back(store(readResult,
-		                       krmGetRanges(tr,
-		                                    keyServersPrefix,
-		                                    range,
-		                                    CLIENT_KNOBS->KRM_GET_RANGE_LIMIT,
-		                                    CLIENT_KNOBS->KRM_GET_RANGE_LIMIT_BYTES)));
-		actors.push_back(store(UIDtoTagMap, tr->getRange(serverTagKeys, CLIENT_KNOBS->TOO_MANY)));
-		wait(waitForAll(actors));
-		if (UIDtoTagMap.more || UIDtoTagMap.size() >= CLIENT_KNOBS->TOO_MANY) {
-			TraceEvent(g_network->isSimulated() ? SevError : SevWarnAlways,
-			           "AuditUtilReadKeyServersReadTagError",
-			           auditServerId);
-			throw audit_storage_cancelled();
-		}
-		Future<Version> grvF = tr->getReadVersion();
-		if (!grvF.isReady()) {
-			TraceEvent(SevWarnAlways, "AuditUtilReadKeyServersGRVError", auditServerId);
-			throw audit_storage_cancelled();
-		}
-		Version readAtVersion = grvF.get();
-
-		TraceEvent(SevVerbose, "AuditUtilGetThisServerKeysFromKeyServersReadDone", auditServerId)
-		    .detail("Range", range)
-		    .detail("ResultSize", readResult.size())
-		    .detail("AduitServerID", auditServerId);
-
-		// produce result
-		std::unordered_map<UID, std::vector<KeyRange>> serverOwnRanges;
-		for (int i = 0; i < readResult.size() - 1; ++i) {
-			std::vector<UID> src;
-			std::vector<UID> dest;
-			UID srcID;
-			UID destID;
-			decodeKeyServersValue(UIDtoTagMap, readResult[i].value, src, dest, srcID, destID);
-			if (srcID == anonymousShardId) {
-				shardsInAnonymousPhysicalShardCount++;
-			}
-			totalShardsCount++;
-			std::vector<UID> servers(src.size() + dest.size());
-			std::merge(src.begin(), src.end(), dest.begin(), dest.end(), servers.begin());
-			for (auto& ssid : servers) {
-				serverOwnRanges[ssid].push_back(Standalone(KeyRangeRef(readResult[i].key, readResult[i + 1].key)));
-			}
-		}
-		const KeyRange completeRange = Standalone(KeyRangeRef(range.begin, readResult.back().key));
-		TraceEvent(SevInfo, "AuditUtilGetThisServerKeysFromKeyServersEnd", auditServerId)
-		    .detail("Range", range)
-		    .detail("CompleteRange", completeRange)
-		    .detail("AtVersion", readAtVersion)
-		    .detail("ShardsInAnonymousPhysicalShardCount", shardsInAnonymousPhysicalShardCount)
-		    .detail("TotalShardsCount", totalShardsCount);
-		res = AuditGetKeyServersRes(completeRange, readAtVersion, serverOwnRanges, readResult.logicalSize());
-
-	} catch (Error& e) {
-		TraceEvent(SevDebug, "AuditUtilGetThisServerKeysFromKeyServersError", auditServerId)
-		    .errorUnsuppressed(e)
-		    .detail("AuditServerId", auditServerId);
 		throw e;
 	}
 
