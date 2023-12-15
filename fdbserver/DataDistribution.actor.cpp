@@ -1831,7 +1831,7 @@ ACTOR Future<Void> scheduleAuditOnRange(Reference<DataDistributorData> self,
 // Request SS to do the audit
 // This actor is the only interface to SS to do the audit for
 // all audit types
-ACTOR Future<Void> doAuditOnStorageServer(Reference<DataDistributor> self,
+ACTOR Future<Void> doAuditOnStorageServer(Reference<DataDistributorData> self,
                                           std::shared_ptr<DDAudit> audit,
                                           StorageServerInterface ssi,
                                           AuditStorageRequest req) {
