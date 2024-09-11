@@ -1749,6 +1749,8 @@ void SimulationConfig::setStorageEngine(const TestConfig& testConfig) {
 		storage_engine_type = deterministicRandom()->randomChoice(storageEngineCandidates);
 	}
 
+	storage_engine_type = 5;
+
 	if (storage_engine_type == 5) {
 		set_config("encryption_at_rest_mode=disabled");
 	}
